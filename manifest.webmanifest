@@ -1,0 +1,29 @@
+{
+  "id": "/",
+  "name": "Wordfeud Solver",
+  "short_name": "WF Solver",
+  "description": "Deterministically find the strongest Wordfeud move from a screenshot.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f4f1e9",
+  "theme_color": "#163f34",
+  "categories": ["games", "utilities"],
+  "prefer_related_applications": false,
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ],
+  "share_target": {
+    "action": "/share-target",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "files": [
+        { "name": "screenshot", "accept": ["image/png", "image/jpeg", "image/webp", ".png", ".jpg", ".jpeg", ".webp"] }
+      ]
+    }
+  }
+}

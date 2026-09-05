@@ -1,0 +1,11 @@
+{
+  "name": "wordfeud-cheater",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dictionary": "node scripts/fetch-dictionary.js",
+    "test": "node --test"
+  }
+}
