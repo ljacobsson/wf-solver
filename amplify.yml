@@ -1,0 +1,16 @@
+version: 1
+
+frontend:
+  phases:
+    build:
+      commands:
+        - npm run dictionary
+        - mkdir -p dist
+        - cp index.html app.js styles.css pwa.css manifest.webmanifest sw.js dist/
+        - cp -R src icons data dist/
+  artifacts:
+    baseDirectory: dist
+    files:
+      - "**/*"
+  cache:
+    paths: []
