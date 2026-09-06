@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { buildTrie, makeBoard, solve } from "../src/solver.js";
-import { locateBoardData } from "../src/vision.js";
+import { locateBoardData, locateRackTiles } from "../src/vision.js";
 
 test("finds and scores an opening word through the center", () => {
   const board=makeBoard(); board[7][7].premium="DW";
@@ -45,4 +45,19 @@ test("locates an inset board independently of screenshot pixel ratio", () => {
   assert.ok(Math.abs(found.x-x0)<=2,JSON.stringify(found));
   assert.ok(Math.abs(found.y-y0)<=2,JSON.stringify(found));
   assert.ok(Math.abs(found.size-size)<=2,JSON.stringify(found));
+});
+
+test("rack detection ignores a Q descender crossing one scanline", () => {
+  const width=300,height=603,pixels=new Uint8ClampedArray(width*height*4);
+  for(let i=0;i<pixels.length;i+=4){pixels[i]=30;pixels[i+1]=35;pixels[i+2]=40;pixels[i+3]=255;}
+  for(let tile=0;tile<7;tile++)for(let y=490;y<=550;y++)for(let x=5+tile*42;x<43+tile*42;x++){
+    const i=(y*width+x)*4;pixels[i]=235;pixels[i+1]=232;pixels[i+2]=225;
+  }
+  // The old detector sampled close to the bottom, where this stroke divides Q.
+  for(let y=540;y<=550;y++)for(let x=5+4*42+17;x<=5+4*42+21;x++){
+    const i=(y*width+x)*4;pixels[i]=20;pixels[i+1]=20;pixels[i+2]=20;
+  }
+  const tiles=locateRackTiles({width,height,data:pixels},{x:0,y:100,size:300});
+  assert.equal(tiles.length,7);
+  assert.deepEqual(tiles.map(tile=>tile.x),[5,47,89,131,173,215,257]);
 });

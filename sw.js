@@ -1,4 +1,4 @@
-const APP_CACHE="wordfeud-app-v4";
+const APP_CACHE="wordfeud-app-v5";
 const MEDIA_CACHE="wordfeud-shared-v1";
 const ROOT=new URL("./",self.registration.scope);
 const SHARE_URL=new URL("__shared_screenshot__",ROOT).href;

@@ -180,7 +180,7 @@ function trueRuns(values,minLength=1) {
   return runs;
 }
 
-function locateRackTiles(data,boardRect) {
+export function locateRackTiles(data,boardRect) {
   const firstY=clamp(Math.round(boardRect.y+boardRect.size),0,data.height-1);
   const lastY=clamp(Math.round(data.height*.94),firstY,data.height-1);
   const rowIsRack=[];
@@ -194,13 +194,22 @@ function locateRackTiles(data,boardRect) {
   const band=bands.sort((a,b)=>b.length-a.length)[0];
   const top=firstY+band.start,bottom=firstY+band.end;
 
-  // Near the bottom of each tile there are no letters or point values, so a
-  // single scanline gives seven uninterrupted light rectangles separated by
-  // the dark rack gutters.
-  const scanY=Math.round(bottom-(bottom-top)*.08);
-  const lightColumns=Array.from({length:data.width},(_,x)=>lum(data.data,(scanY*data.width+x)*4)>150);
-  const columns=trueRuns(lightColumns,Math.max(20,Math.round(data.width/30)));
-  if(columns.length!==7)return [];
+  // Inspect the entire rack height instead of assuming its bottom is free of
+  // ink. Descenders such as Q can cross the old single scanline and split one
+  // tile into two regions. Among rows that expose exactly seven tiles, choose
+  // the one with the greatest uninterrupted light coverage and most uniform
+  // tile widths.
+  const candidates=[];
+  for(let scanY=top;scanY<=bottom;scanY++){
+    const lightColumns=Array.from({length:data.width},(_,x)=>lum(data.data,(scanY*data.width+x)*4)>150);
+    const columns=trueRuns(lightColumns,Math.max(20,Math.round(data.width/30)));
+    if(columns.length!==7)continue;
+    const widths=columns.map(column=>column.length),mean=widths.reduce((sum,n)=>sum+n,0)/widths.length;
+    const deviation=Math.sqrt(widths.reduce((sum,n)=>sum+(n-mean)**2,0)/widths.length);
+    candidates.push({columns,score:widths.reduce((sum,n)=>sum+n,0)-deviation*3});
+  }
+  if(!candidates.length)return [];
+  const columns=candidates.sort((a,b)=>b.score-a.score)[0].columns;
   return columns.map(column=>({x:column.start,y:top,w:column.length,h:bottom-top+1}));
 }
 
