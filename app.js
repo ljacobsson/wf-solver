@@ -19,20 +19,22 @@ async function loadDictionary() {
   $("#dictFile").addEventListener("change",async e=>{const words=(await e.target.files[0].text()).split(/\s+/);trie=buildTrie(words);status.textContent=`${trie.count.toLocaleString()} SOWPODS words ready`;});
 }
 
-function renderBoard(highlights=[]) {
-  const el=$("#board"), highlight=new Set(highlights.map(p=>`${p.r},${p.c}`)); el.replaceChildren();
+function renderBoard(placements=[],animate=false) {
+  const el=$("#board"), proposed=new Map(placements.map((p,index)=>[`${p.r},${p.c}`,{...p,index}])); el.replaceChildren();
   for(let r=0;r<15;r++) for(let c=0;c<15;c++) {
-    const cell=board[r][c], b=document.createElement("button"); b.className="cell";
-    if(cell.letter)b.classList.add("tile"); if(cell.blank)b.classList.add("blank"); if(cell.confidence<.45)b.classList.add("low");
-    if(selected?.r===r&&selected?.c===c)b.classList.add("selected"); if(highlight.has(`${r},${c}`))b.classList.add("selected");
+    const cell=board[r][c],proposal=proposed.get(`${r},${c}`),letter=proposal?.letter||cell.letter,blank=proposal?.blank||cell.blank,b=document.createElement("button"); b.className="cell";
+    if(letter)b.classList.add("tile"); if(blank)b.classList.add("blank"); if(!proposal&&cell.confidence<.45)b.classList.add("low");
+    if(selected?.r===r&&selected?.c===c)b.classList.add("selected");
+    if(proposal){b.classList.add("proposal");if(animate)b.classList.add("placing");b.style.setProperty("--place-order",proposal.index);}
     b.dataset.premium=cell.premium; b.title=`${String.fromCharCode(65+c)}${r+1} · ${cell.letter||cell.premium||"empty"}`;
-    b.innerHTML=cell.letter ? `${cell.letter}<small>${cell.blank?0:VALUES[cell.letter]??""}</small>` : (cell.premium==="NONE"?"":`<small>${cell.premium}</small>`);
+    b.innerHTML=letter ? `${letter}<small>${blank?0:VALUES[letter]??""}</small>` : (cell.premium==="NONE"?"":`<small>${cell.premium}</small>`);
     b.addEventListener("click",()=>selectCell(r,c)); el.append(b);
   }
 }
 
 function selectCell(r,c) {
   selected={r,c}; const cell=board[r][c];
+  $(".inspector").classList.add("open");
   $("#coordinate").textContent=`${String.fromCharCode(65+c)}${r+1} · row ${r+1}, column ${c+1}`;
   $("#cellLetter").value=cell.letter; $("#cellPremium").value=cell.premium; $("#cellBlank").checked=cell.blank; renderBoard();
 }
@@ -42,56 +44,55 @@ function updateCell() {
   cell.letter=$("#cellLetter").value.toUpperCase().replace(/[^A-Z]/g,"").slice(0,1);cell.premium=$("#cellPremium").value;cell.blank=$("#cellBlank").checked&&!!cell.letter;cell.confidence=1;renderBoard();
 }
 
-function updateCropLine() {
-  if(!sourceImage||!boardRect)return; const shown=$("#preview").clientHeight, scale=shown/sourceImage.naturalHeight;
-  const imageOffset=($("#previewWrap").clientWidth-$("#preview").clientWidth)/2;
-  const line=$(".crop-line");line.style.top=`${boardRect.y*scale}px`;line.style.left=`${imageOffset+boardRect.x*scale}px`;line.style.right="auto";line.style.width=`${boardRect.size*scale}px`;
-  $("#boardTopOut").textContent=`x ${Math.round(boardRect.x)} · y ${Math.round(boardRect.y)} · ${Math.round(boardRect.size)} px`;
-}
-
 async function useFile(file) {
-  if(!file)return; const img=$("#preview"); img.src=URL.createObjectURL(file); await img.decode(); sourceImage=img;
-  boardRect=locateBoard(img); const slider=$("#boardTop");slider.max=Math.max(0,img.naturalHeight-boardRect.size);slider.value=boardRect.y;
-  $("#dropzone").classList.add("hidden");$("#previewWrap").classList.remove("hidden");$("#boardTopWrap").classList.remove("hidden");updateCropLine();
-  parseImage();
+  if(!file)return;
+  setLoading(true,"Reading your board…");
+  const img=$("#preview"),objectUrl=URL.createObjectURL(file);
+  try{
+    img.src=objectUrl;await img.decode();sourceImage=img;boardRect=locateBoard(img);parseImage();
+    await dictionaryReady;await runSolver();
+  }catch(error){alert(`Could not read this screenshot: ${error.message}`);}
+  finally{URL.revokeObjectURL(objectUrl);setLoading(false);}
 }
 
 function parseImage() {
   const result=readScreenshot(sourceImage,boardRect);board=result.board;$("#rack").value=result.rack;
-  $("#workspace").classList.remove("hidden");renderBoard();selectCell(0,0);
+  selected=null;$(".inspector").classList.remove("open");$(".upload-panel").classList.add("hidden");$("#workspace").classList.remove("hidden");document.body.classList.add("has-board");renderBoard();
 }
 
-function runSolver() {
+async function runSolver() {
   const results=$("#results"); $("#resultsPanel").classList.remove("hidden");
-  if(!trie){results.innerHTML="<div class='error'>SOWPODS is not loaded. Connect once to download it, or choose a local sowpods.txt file in the dictionary badge above.</div>";return;}
-  const rack=$("#rack").value.toUpperCase().replace(/[^A-Z?]/g,"");if(!rack.length){results.innerHTML="<div class='error'>Enter the letters on your rack first.</div>";return;}
+  if(!trie){results.innerHTML="<div class='error'>SOWPODS is not loaded. Connect once to download it, or choose a local sowpods.txt file in the dictionary badge above.</div>";return [];}
+  const rack=$("#rack").value.toUpperCase().replace(/[^A-Z?]/g,"");if(!rack.length){results.innerHTML="<div class='error'>Enter the letters on your rack first.</div>";return [];}
   $("#solve").disabled=true;$("#solve").textContent="Searching…";
-  requestAnimationFrame(()=>setTimeout(()=>{
-    const start=performance.now();let plays;
-    try{plays=solve(board,rack,trie,100);}catch(error){results.innerHTML=`<div class='error'>${error.message}</div>`;return;}finally{$("#solve").disabled=false;$("#solve").textContent="Find best moves";}
-    const elapsed=performance.now()-start;$("#timing").textContent=`${plays.length} moves · ${Math.round(elapsed)} ms`;
-    if(!plays.length){results.innerHTML="<div class='error'>No legal moves found. Check any red ? markers on the board and verify the rack.</div>";return;}
+  await new Promise(resolve=>requestAnimationFrame(()=>setTimeout(resolve,0)));
+  const start=performance.now();let plays=[];
+  try{
+    plays=solve(board,rack,trie,30);const elapsed=performance.now()-start;$("#timing").textContent=`${plays.length} moves · ${Math.round(elapsed)} ms`;
+    if(!plays.length){results.innerHTML="<div class='error'>No legal moves found. Check any red ? markers on the board and verify the rack.</div>";return plays;}
     results.replaceChildren(...plays.map((play,index)=>{
       const el=document.createElement("button");el.className="result";el.innerHTML=`<span class='score'>${play.score}</span><span><span class='word'>${play.word}</span><br><span class='meta'>${scoreBreakdown(play)}${play.bingo?" · +40 bingo":""}${play.crossScore?` · ${play.crossScore} cross points`:""}</span></span><span class='placement'>${play.placed.map(p=>`${String.fromCharCode(65+p.c)}${p.r+1}=${p.letter}${p.blank?"*":""}`).join(" ")}</span>`;
-      el.addEventListener("click",()=>{renderBoard(play.placed);el.scrollIntoView({behavior:"smooth",block:"nearest"});});if(index===0)el.setAttribute("aria-label","Best move");return el;
+      el.addEventListener("click",async()=>{document.querySelectorAll(".result.active").forEach(item=>item.classList.remove("active"));el.classList.add("active");$("#board").scrollIntoView({behavior:"smooth",block:"center"});await new Promise(resolve=>setTimeout(resolve,260));renderBoard(play.placed,true);});if(index===0)el.setAttribute("aria-label","Best move");return el;
     }));
-    renderBoard(plays[0].placed);$("#resultsPanel").scrollIntoView({behavior:"smooth"});
-  },0));
+    renderBoard();return plays;
+  }catch(error){results.innerHTML=`<div class='error'>${error.message}</div>`;return plays;}
+  finally{$("#solve").disabled=false;$("#solve").textContent="Find best moves";}
 }
+
+function setLoading(active,title){if(title)$("#loadingTitle").textContent=title;document.documentElement.classList.toggle("is-loading",active);if(!active)document.documentElement.classList.remove("receiving-share");}
 
 $("#file").addEventListener("change",e=>useFile(e.target.files[0]));
 for(const event of ["dragenter","dragover"])$("#dropzone").addEventListener(event,e=>{e.preventDefault();e.currentTarget.classList.add("drag")});
 for(const event of ["dragleave","drop"])$("#dropzone").addEventListener(event,e=>{e.preventDefault();e.currentTarget.classList.remove("drag");if(event==="drop")useFile(e.dataTransfer.files[0])});
-$("#boardTop").addEventListener("input",e=>{boardRect.y=Number(e.target.value);updateCropLine()});
-$("#boardTop").addEventListener("change",parseImage);$("#cellLetter").addEventListener("input",updateCell);$("#cellPremium").addEventListener("change",updateCell);$("#cellBlank").addEventListener("change",updateCell);
+$("#cellLetter").addEventListener("input",updateCell);$("#cellPremium").addEventListener("change",updateCell);$("#cellBlank").addEventListener("change",updateCell);
 $("#clearCell").addEventListener("click",()=>{if(!selected)return;board[selected.r][selected.c]={letter:"",premium:"NONE",blank:false,confidence:1};selectCell(selected.r,selected.c)});
+$("#closeInspector").addEventListener("click",()=>{selected=null;$(".inspector").classList.remove("open");renderBoard();});
 $("#rack").addEventListener("input",e=>e.target.value=e.target.value.toUpperCase().replace(/[^A-Z?]/g,"").slice(0,7));$("#solve").addEventListener("click",runSolver);
-window.addEventListener("resize",updateCropLine);
 
 async function consumeSharedScreenshot(){
   const query=new URLSearchParams(location.search);
   if(!query.has("share-target")&&!query.has("share-error"))return;
-  if(query.has("share-error")){alert("The shared item was not a supported screenshot.");history.replaceState({},"",location.pathname);return;}
+  if(query.has("share-error")){setLoading(false);alert("The shared item was not a supported screenshot.");history.replaceState({},"",location.pathname);return;}
   try{
     const cache=await caches.open("wordfeud-shared-v1");
     const key=new URL("./__shared_screenshot__",location.href).href;
@@ -100,7 +101,7 @@ async function consumeSharedScreenshot(){
     const blob=await response.blob();await cache.delete(key);
     history.replaceState({},"",location.pathname);
     await useFile(blob);
-  }catch(error){alert(error.message);}
+  }catch(error){setLoading(false);alert(error.message);}
 }
 
 async function initializePwa(){
@@ -120,4 +121,5 @@ async function initializePwa(){
   await consumeSharedScreenshot();
 }
 
-loadDictionary();initializePwa();
+const dictionaryReady=loadDictionary();
+initializePwa();

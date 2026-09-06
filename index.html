@@ -1,20 +1,20 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#163f34"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Wordfeud Solver"><title>Wordfeud Solver</title><link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icons/icon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="icons/icon-192.png"><link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="pwa.css"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#163f34"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Wordfeud Solver"><script>if(new URLSearchParams(location.search).has("share-target"))document.documentElement.classList.add("receiving-share")</script><title>Wordfeud Solver</title><link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icons/icon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="icons/icon-192.png"><link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="pwa.css"><link rel="stylesheet" href="mobile.css"></head>
 <body>
+  <div id="loadingOverlay" class="loading-overlay" role="status" aria-live="polite"><div class="loading-card"><div class="spinner" aria-hidden="true"></div><strong id="loadingTitle">Reading your board…</strong><span>Finding the strongest SOWPODS moves</span></div></div>
   <header><div><span class="eyebrow">DETERMINISTIC SOLVER</span><h1>Find the strongest move.</h1><p>Upload a Wordfeud screenshot. Verify the board, then rank every legal SOWPODS play with exact premium-square scoring.</p></div><div class="header-actions"><button id="installApp" class="install-button">Install app</button><div id="dictStatus" class="status">Loading dictionary…</div></div></header>
   <main>
     <section class="panel upload-panel">
       <div id="dropzone" class="dropzone"><input id="file" type="file" accept="image/*"><div class="upload-icon">↑</div><strong>Drop a screenshot here</strong><span>or tap to choose one</span></div>
-      <div id="previewWrap" class="preview hidden"><img id="preview" alt="Uploaded Wordfeud screenshot"><div class="crop-line"></div></div>
-      <label id="boardTopWrap" class="range hidden">Board top <input id="boardTop" type="range" min="0" max="1000"><output id="boardTopOut"></output></label>
+      <img id="preview" class="source-image" alt="">
     </section>
     <section id="workspace" class="panel hidden">
-      <div class="section-head"><div><span class="step">01</span><h2>Verify the read</h2></div><p>Tap any square to correct its letter or premium.</p></div>
-      <div class="edit-layout"><div id="board" class="board"></div><aside class="inspector"><div class="coordinate" id="coordinate">Select a square</div><label>Letter<input id="cellLetter" maxlength="1" inputmode="text" placeholder="empty"></label><label>Square<select id="cellPremium"><option>NONE</option><option>DL</option><option>TL</option><option>DW</option><option>TW</option></select></label><label class="check"><input id="cellBlank" type="checkbox"> Existing blank tile</label><button id="clearCell" class="ghost">Clear square</button></aside></div>
+      <div class="section-head"><div><span class="step">01</span><h2>Your board</h2></div><p>Tap a square only if it needs correcting.</p></div>
+      <div class="edit-layout"><div id="board" class="board"></div><aside class="inspector"><div class="coordinate" id="coordinate">Select a square</div><button id="closeInspector" class="inspector-close" aria-label="Close editor">×</button><label>Letter<input id="cellLetter" maxlength="1" inputmode="text" placeholder="empty"></label><label>Square<select id="cellPremium"><option>NONE</option><option>DL</option><option>TL</option><option>DW</option><option>TW</option></select></label><label class="check"><input id="cellBlank" type="checkbox"> Existing blank tile</label><button id="clearCell" class="ghost">Clear square</button></aside></div>
       <div class="rack-row"><label>Your rack<input id="rack" maxlength="7" placeholder="AEIRST?" spellcheck="false"></label><span><b>?</b> means a blank</span><button id="solve" class="primary">Find best moves</button></div>
     </section>
-    <section id="resultsPanel" class="panel hidden"><div class="section-head"><div><span class="step">02</span><h2>Best moves</h2></div><p id="timing"></p></div><div id="results" class="results"></div></section>
+    <section id="resultsPanel" class="panel hidden"><div class="section-head"><div><span class="step">02</span><h2>Best moves</h2></div><p id="timing"></p></div><p class="tap-hint">Tap a move to place it on the board.</p><div id="results" class="results"></div></section>
   </main>
   <footer>Runs locally in your browser · no screenshot upload · deterministic trie search</footer>
   <script type="module" src="app.js"></script>

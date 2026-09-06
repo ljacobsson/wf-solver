@@ -15,54 +15,77 @@ export function locateBoard(source) {
 export function locateBoardData(data) {
   const w=data.width,h=data.height;
   const pixel=(x,y)=>lum(data.data,(clamp(Math.round(y),0,h-1)*w+clamp(Math.round(x),0,w-1))*4);
-  const median=values=>{const sorted=[...values].sort((a,b)=>a-b),mid=Math.floor(sorted.length/2);return sorted.length%2?sorted[mid]:(sorted[mid-1]+sorted[mid])/2;};
+  const percentile=(values,fraction)=>{const sorted=[...values].sort((a,b)=>a-b),at=(sorted.length-1)*fraction,lower=Math.floor(at),upper=Math.ceil(at);return sorted[lower]+(sorted[upper]-sorted[lower])*(at-lower);};
 
-  // Wordfeud's phone layout keeps the board nearly screen-wide, but display
-  // zoom, device frames and aspect ratios can add a small horizontal inset.
-  // Score all plausible square sizes against both sets of 15-cell grid lines.
+  // Score a candidate only when all 16 horizontal and vertical grid boundaries
+  // behave like a complete 15x15 lattice. Median contrast rejects letters,
+  // buttons and smaller rectangular UI elements that happen to resemble lines.
   const scoreRect=(x,y,size)=>{
     const cell=size/SIZE,offset=Math.max(2,cell*.12),bottom=y+size;
-    if(y-offset<0||bottom+offset>=h||x<0||x+size>w)return -Infinity;
-    const differences=[],topEnds=[],bottomEnds=[],sampleCells=[1,4,7,10,13];
-    for(let k=1;k<SIZE;k++) {
+    if(y-offset<0||bottom+offset>=h||x<0||x+size>w)return {score:-Infinity,grid:-Infinity,boundary:-Infinity};
+    const differences=[],topEnds=[],bottomEnds=[];
+    for(let k=0;k<=SIZE;k++) {
       const edgeY=y+k*cell,edgeX=x+k*cell;
-      for(const j of sampleCells) {
+      const adjacent=k===0?.5:k===SIZE?SIZE-.5:k-.5;
+      for(let j=0;j<SIZE;j++) {
         const centerX=x+(j+.5)*cell,centerY=y+(j+.5)*cell;
-        differences.push(pixel(centerX,y+(k-.5)*cell)-pixel(centerX,edgeY));
-        differences.push(pixel(x+(k-.5)*cell,centerY)-pixel(edgeX,centerY));
+        differences.push(pixel(centerX,y+adjacent*cell)-pixel(centerX,edgeY));
+        differences.push(pixel(x+adjacent*cell,centerY)-pixel(edgeX,centerY));
       }
-      // Real outer edges are where every vertical gutter starts and stops.
-      // This disambiguates the true top from a one-row-shifted grid match.
-      topEnds.push(pixel(edgeX,y-offset)-pixel(edgeX,y+offset));
-      bottomEnds.push(pixel(edgeX,bottom+offset)-pixel(edgeX,bottom-offset));
+      if(k>0&&k<SIZE){
+        topEnds.push(pixel(edgeX,y-offset)-pixel(edgeX,y+offset));
+        bottomEnds.push(pixel(edgeX,bottom+offset)-pixel(edgeX,bottom-offset));
+      }
     }
-    const grid=differences.reduce((sum,n)=>sum+n,0)/differences.length;
-    return grid+3*Math.min(median(topEnds),median(bottomEnds));
+    const grid=percentile(differences,.5);
+    const boundary=Math.min(percentile(topEnds,.25),percentile(bottomEnds,.25));
+    return {score:grid+Math.min(60,boundary),grid,boundary};
   };
 
-  const coarse=Math.max(1,Math.round(w/150));
+  const maxSize=Math.min(w,h),coarse=Math.max(1,Math.round(maxSize/100));
+  const sizes=[];
+  for(let size=Math.max(SIZE*8,Math.round(maxSize*.25));size<=maxSize;size+=coarse)sizes.push(size);
+  if(sizes.at(-1)!==maxSize)sizes.push(maxSize);
   let best={score:-Infinity,x:0,y:Math.round((h-w)*.55),size:w};
-  for(let size=Math.round(w*.9);size<=w;size+=coarse) {
+  let seed=null;
+  for(const size of sizes) {
     const x=(w-size)/2;
-    for(let y=Math.round(h*.1);y<=h-size;y+=coarse) {
-      const score=scoreRect(x,y,size);
-      if(score>best.score)best={score,x,y,size};
+    let sizeBest={score:-Infinity,x,y:0,size,grid:-Infinity,boundary:-Infinity};
+    for(let y=Math.round(h*.05);y<=h-size;y+=coarse) {
+      const metrics=scoreRect(x,y,size),candidate={...metrics,x,y,size};
+      if(candidate.score>sizeBest.score)sizeBest=candidate;
+      if(candidate.score>best.score)best=candidate;
     }
+    if(sizeBest.grid>=12&&sizeBest.boundary>=8)seed=sizeBest;
   }
 
-  // Resolve the coarse result to source-pixel precision, including slight
-  // asymmetric insets caused by rounded device frames or screenshot crops.
-  const seed=best;
-  for(let size=Math.max(15,seed.size-coarse);size<=Math.min(w,seed.size+coarse);size++) {
+  // Resolve the coarse result to source-pixel precision, including asymmetric
+  // insets caused by rounded device frames or screenshot crops.
+  seed ||= best;best=seed;
+  for(let size=Math.max(SIZE*8,seed.size-coarse);size<=Math.min(maxSize,seed.size+coarse);size++) {
     const centered=(w-size)/2;
     for(let x=Math.max(0,Math.round(centered-coarse));x<=Math.min(w-size,Math.round(centered+coarse));x++) {
       for(let y=Math.max(0,seed.y-coarse);y<=Math.min(h-size,seed.y+coarse);y++) {
-        const score=scoreRect(x,y,size);
-        if(score>best.score)best={score,x,y,size};
+        const metrics=scoreRect(x,y,size);
+        if(metrics.grid>=12&&metrics.boundary>=8&&metrics.score>best.score)best={...metrics,x,y,size};
       }
     }
   }
-  return {x:Math.round(best.x),y:Math.round(best.y),size:Math.round(best.size),confidence:clamp((best.score-35)/100,0,1)};
+  // Grid gutters can be several source pixels thick. Align the returned top to
+  // the darkest common horizontal gutter so cell interiors—not gutter edges—
+  // are used by the OCR on both low- and high-density screenshots.
+  const cell=best.size/SIZE,phaseRadius=Math.max(1,Math.round(cell*.12));
+  let alignedY=best.y,lowestEdge=Infinity;
+  for(let y=Math.max(0,best.y-phaseRadius);y<=Math.min(h-best.size,best.y+phaseRadius);y++){
+    let total=0,count=0;
+    for(let k=0;k<=SIZE;k++)for(let j=0;j<SIZE;j++){
+      total+=pixel(best.x+(j+.5)*cell,y+k*cell);count++;
+    }
+    const average=total/count;
+    if(average<=lowestEdge){lowestEdge=average;alignedY=y;}
+  }
+  best={...best,...scoreRect(best.x,alignedY,best.size),y:alignedY};
+  return {x:Math.round(best.x),y:Math.round(best.y),size:Math.round(best.size),confidence:clamp(Math.min(best.grid/20,best.boundary/25),0,1)};
 }
 
 function averagePatch(data,cx,cy,radius) {

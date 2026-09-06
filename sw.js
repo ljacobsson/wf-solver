@@ -1,8 +1,8 @@
-const APP_CACHE="wordfeud-app-v1";
+const APP_CACHE="wordfeud-app-v4";
 const MEDIA_CACHE="wordfeud-shared-v1";
 const ROOT=new URL("./",self.registration.scope);
 const SHARE_URL=new URL("__shared_screenshot__",ROOT).href;
-const APP_SHELL=["","index.html","styles.css","pwa.css","app.js","src/solver.js","src/vision.js","manifest.webmanifest","icons/icon.svg","icons/icon-192.png","icons/icon-512.png"].map(path=>new URL(path,ROOT).href);
+const APP_SHELL=["","index.html","styles.css","pwa.css","mobile.css","app.js","src/solver.js","src/vision.js","manifest.webmanifest","icons/icon.svg","icons/icon-192.png","icons/icon-512.png"].map(path=>new URL(path,ROOT).href);
 
 self.addEventListener("install",event=>{
   event.waitUntil(caches.open(APP_CACHE).then(cache=>cache.addAll(APP_SHELL)).then(()=>self.skipWaiting()));
