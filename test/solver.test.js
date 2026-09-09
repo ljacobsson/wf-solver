@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildTrie, makeBoard, solve } from "../src/solver.js";
+import { assessOpponentRisk, buildTrie, makeBoard, solve } from "../src/solver.js";
 import { locateBoardData, locateRackTiles } from "../src/vision.js";
 
 test("finds and scores an opening word through the center", () => {
@@ -60,4 +60,31 @@ test("rack detection ignores a Q descender crossing one scanline", () => {
   const tiles=locateRackTiles({width,height,data:pixels},{x:0,y:100,size:300});
   assert.equal(tiles.length,7);
   assert.deepEqual(tiles.map(tile=>tile.x),[5,47,89,131,173,215,257]);
+});
+
+test("rack detection supports every endgame rack size", () => {
+  for(const count of [1,2,3,4,5,6]){
+    const width=300,height=603,pixels=new Uint8ClampedArray(width*height*4);
+    for(let i=0;i<pixels.length;i+=4){pixels[i]=30;pixels[i+1]=35;pixels[i+2]=40;pixels[i+3]=255;}
+    const rackWidth=count*42-4,start=Math.round((width-rackWidth)/2);
+    for(let tile=0;tile<count;tile++)for(let y=490;y<=550;y++)for(let x=start+tile*42;x<start+tile*42+38;x++){
+      const i=(y*width+x)*4;pixels[i]=235;pixels[i+1]=232;pixels[i+2]=225;
+    }
+    const tiles=locateRackTiles({width,height,data:pixels},{x:0,y:100,size:300});
+    assert.equal(tiles.length,count,`failed with ${count} tiles`);
+  }
+});
+
+test("flags a newly opened lane through multiple premiums", () => {
+  const board=makeBoard();board[5][7].premium="TW";board[6][7].premium="TL";
+  const risk=assessOpponentRisk(board,{placed:[{r:7,c:7,letter:"A",blank:false}]});
+  assert.equal(risk.level,"high");
+  assert.deepEqual(risk.premiums,["TW","TL"]);
+  assert.match(risk.detail,/new down lane/);
+});
+
+test("does not warn when a move creates no premium exposure", () => {
+  const board=makeBoard();
+  const risk=assessOpponentRisk(board,{placed:[{r:7,c:7,letter:"A",blank:false}]});
+  assert.equal(risk.level,"none");
 });

@@ -187,7 +187,9 @@ export function locateRackTiles(data,boardRect) {
   for(let y=firstY;y<=lastY;y++) {
     let light=0,total=0;
     for(let x=0;x<data.width;x+=4){if(lum(data.data,(y*data.width+x)*4)>150)light++;total++;}
-    rowIsRack.push(light/total>.52);
+    // One remaining tile covers roughly 13% of a Wordfeud rack. Keep the
+    // threshold below that instead of requiring a mostly full seven-tile row.
+    rowIsRack.push(light/total>.035);
   }
   const bands=trueRuns(rowIsRack,Math.max(20,Math.round(data.width/15*.55)));
   if(!bands.length)return [];
@@ -196,17 +198,18 @@ export function locateRackTiles(data,boardRect) {
 
   // Inspect the entire rack height instead of assuming its bottom is free of
   // ink. Descenders such as Q can cross the old single scanline and split one
-  // tile into two regions. Among rows that expose exactly seven tiles, choose
-  // the one with the greatest uninterrupted light coverage and most uniform
-  // tile widths.
+  // tile into two regions. Accept any real rack size from one through seven and
+  // prefer scanlines whose rectangles match Wordfeud's stable tile width.
   const candidates=[];
+  const expectedWidth=data.width*.13,minTileWidth=Math.max(12,Math.round(data.width*.06));
   for(let scanY=top;scanY<=bottom;scanY++){
     const lightColumns=Array.from({length:data.width},(_,x)=>lum(data.data,(scanY*data.width+x)*4)>150);
-    const columns=trueRuns(lightColumns,Math.max(20,Math.round(data.width/30)));
-    if(columns.length!==7)continue;
+    const columns=trueRuns(lightColumns,minTileWidth);
+    if(columns.length<1||columns.length>7)continue;
     const widths=columns.map(column=>column.length),mean=widths.reduce((sum,n)=>sum+n,0)/widths.length;
     const deviation=Math.sqrt(widths.reduce((sum,n)=>sum+(n-mean)**2,0)/widths.length);
-    candidates.push({columns,score:widths.reduce((sum,n)=>sum+n,0)-deviation*3});
+    const sizePenalty=Math.abs(mean-expectedWidth)*columns.length*2;
+    candidates.push({columns,score:widths.reduce((sum,n)=>sum+n,0)-deviation*3-sizePenalty});
   }
   if(!candidates.length)return [];
   const columns=candidates.sort((a,b)=>b.score-a.score)[0].columns;

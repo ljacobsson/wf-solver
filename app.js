@@ -1,5 +1,6 @@
-import { buildTrie, makeBoard, scoreBreakdown, solve, VALUES } from "./src/solver.js";
+import { assessOpponentRisk, buildTrie, makeBoard, scoreBreakdown, solve, VALUES } from "./src/solver.js";
 import { locateBoard, readScreenshot } from "./src/vision.js";
+import { randomLoadingQuote } from "./src/loading-quotes.js";
 
 const $=s=>document.querySelector(s);
 let board=makeBoard(), trie=null, selected=null, sourceImage=null, boardRect=null;
@@ -46,7 +47,7 @@ function updateCell() {
 
 async function useFile(file) {
   if(!file)return;
-  setLoading(true,"Reading your board…");
+  setLoading(true);
   const img=$("#preview"),objectUrl=URL.createObjectURL(file);
   try{
     img.src=objectUrl;await img.decode();sourceImage=img;boardRect=locateBoard(img);parseImage();
@@ -71,7 +72,8 @@ async function runSolver() {
     plays=solve(board,rack,trie,30);const elapsed=performance.now()-start;$("#timing").textContent=`${plays.length} moves · ${Math.round(elapsed)} ms`;
     if(!plays.length){results.innerHTML="<div class='error'>No legal moves found. Check any red ? markers on the board and verify the rack.</div>";return plays;}
     results.replaceChildren(...plays.map((play,index)=>{
-      const el=document.createElement("button");el.className="result";el.innerHTML=`<span class='score'>${play.score}</span><span><span class='word'>${play.word}</span><br><span class='meta'>${scoreBreakdown(play)}${play.bingo?" · +40 bingo":""}${play.crossScore?` · ${play.crossScore} cross points`:""}</span></span><span class='placement'>${play.placed.map(p=>`${String.fromCharCode(65+p.c)}${p.r+1}=${p.letter}${p.blank?"*":""}`).join(" ")}</span>`;
+      const risk=assessOpponentRisk(board,play),riskBadge=risk.level==="none"?"":` <span class='risk risk-${risk.level}' title='${risk.detail}'>⚠ ${risk.label}</span>`;
+      const el=document.createElement("button");el.className="result";el.innerHTML=`<span class='score'>${play.score}</span><span><span class='word'>${play.word}</span>${riskBadge}<br><span class='meta'>${scoreBreakdown(play)}${play.bingo?" · +40 bingo":""}${play.crossScore?` · ${play.crossScore} cross points`:""}${risk.detail?` · ${risk.detail}`:""}</span></span><span class='placement'>${play.placed.map(p=>`${String.fromCharCode(65+p.c)}${p.r+1}=${p.letter}${p.blank?"*":""}`).join(" ")}</span>`;
       el.addEventListener("click",async()=>{document.querySelectorAll(".result.active").forEach(item=>item.classList.remove("active"));el.classList.add("active");$("#board").scrollIntoView({behavior:"smooth",block:"center"});await new Promise(resolve=>setTimeout(resolve,260));renderBoard(play.placed,true);});if(index===0)el.setAttribute("aria-label","Best move");return el;
     }));
     renderBoard();return plays;
@@ -79,7 +81,11 @@ async function runSolver() {
   finally{$("#solve").disabled=false;$("#solve").textContent="Find best moves";}
 }
 
-function setLoading(active,title){if(title)$("#loadingTitle").textContent=title;document.documentElement.classList.toggle("is-loading",active);if(!active)document.documentElement.classList.remove("receiving-share");}
+function setLoading(active){
+  const root=document.documentElement,wasLoading=root.classList.contains("is-loading");
+  if(active&&!wasLoading)$("#loadingQuote").textContent=randomLoadingQuote();
+  root.classList.toggle("is-loading",active);if(!active)root.classList.remove("receiving-share");
+}
 
 $("#file").addEventListener("change",e=>useFile(e.target.files[0]));
 for(const event of ["dragenter","dragover"])$("#dropzone").addEventListener(event,e=>{e.preventDefault();e.currentTarget.classList.add("drag")});
@@ -115,11 +121,12 @@ async function initializePwa(){
     alert("Open your browser menu (or the Share menu on iPhone), then choose ‘Add to Home Screen’ or ‘Install app’. The app must be served over HTTPS.");
   });
   if("serviceWorker" in navigator){
-    try{await navigator.serviceWorker.register("./sw.js");await navigator.serviceWorker.ready;}
+    try{await navigator.serviceWorker.register("./sw.js",{updateViaCache:"none"});await navigator.serviceWorker.ready;}
     catch(error){console.warn("PWA service worker registration failed",error);}
   }
   await consumeSharedScreenshot();
 }
 
 const dictionaryReady=loadDictionary();
+if(document.documentElement.classList.contains("receiving-share"))setLoading(true);
 initializePwa();

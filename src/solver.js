@@ -94,3 +94,46 @@ export function solve(board, rackText, trie, limit=100) {
 export function scoreBreakdown(play) {
   return `${play.word} · ${play.direction === "H" ? "across" : "down"} · row ${play.row+1}, column ${play.col+1}`;
 }
+
+// Estimate newly-created counterplay without guessing the opponent's rack.
+// Each candidate lane is a possible future main word with 1–7 new tiles. We
+// use a neutral two-point tile estimate, exact existing-tile values, and exact
+// premium multipliers. Cross-word validity is deliberately not assumed.
+export function assessOpponentRisk(board,play) {
+  const after=board.map(row=>row.map(cell=>({...cell})));
+  const placedKeys=new Set();
+  for(const tile of play.placed){after[tile.r][tile.c]={...after[tile.r][tile.c],letter:tile.letter,blank:tile.blank};placedKeys.add(`${tile.r},${tile.c}`);}
+  const occupied=(state,r,c)=>inside(r,c)&&!!state[r][c].letter;
+  const connected=(state,cells,dr,dc)=>cells.some(({r,c})=>occupied(state,r,c)||occupied(state,r-dc,c-dr)||occupied(state,r+dc,c+dr));
+  let best=null;
+
+  for(const [dr,dc,direction] of [[0,1,"across"],[1,0,"down"]]){
+    for(let r=0;r<SIZE;r++)for(let c=0;c<SIZE;c++)for(let length=2;length<=SIZE;length++){
+      const endR=r+(length-1)*dr,endC=c+(length-1)*dc;if(!inside(endR,endC))break;
+      if(occupied(after,r-dr,c-dc)||occupied(after,endR+dr,endC+dc))continue;
+      const cells=Array.from({length},(_,i)=>({r:r+i*dr,c:c+i*dc}));
+      const empties=cells.filter(pos=>!occupied(after,pos.r,pos.c));
+      if(!empties.length||empties.length>7||!cells.some(pos=>placedKeys.has(`${pos.r},${pos.c}`)))continue;
+      if(!connected(after,cells,dr,dc)||connected(board,cells,dr,dc))continue;
+      const premiums=empties.map(pos=>after[pos.r][pos.c].premium).filter(premium=>premium!=="NONE");
+      if(!premiums.length)continue;
+      let base=0,wordMultiplier=1;
+      for(const pos of cells){
+        const cell=after[pos.r][pos.c];
+        if(cell.letter){base+=tileValue(cell);continue;}
+        const [letterMultiplier,nextWordMultiplier]=PREMIUM[cell.premium]||PREMIUM.NONE;
+        base+=2*letterMultiplier;wordMultiplier*=nextWordMultiplier;
+      }
+      const estimate=base*wordMultiplier+(empties.length===7?40:0);
+      const wordPremiums=premiums.filter(premium=>premium==="DW"||premium==="TW").length;
+      const tripleWord=premiums.includes("TW");
+      const severity=wordPremiums>=2||(tripleWord&&premiums.length>=2)||premiums.length>=3||estimate>=45?2:
+        tripleWord||(wordPremiums>=1&&premiums.length>=2)||premiums.length>=2||estimate>=24?1:0;
+      const candidate={severity,estimate,premiums,row:r,col:c,length,direction,tilesNeeded:empties.length};
+      if(!best||candidate.severity>best.severity||candidate.severity===best.severity&&candidate.estimate>best.estimate||candidate.severity===best.severity&&candidate.estimate===best.estimate&&candidate.premiums.length>best.premiums.length)best=candidate;
+    }
+  }
+  if(!best||best.severity===0)return {level:"none",label:"",detail:""};
+  const level=best.severity===2?"high":"medium",premiumText=best.premiums.join(" + ");
+  return {level,label:best.severity===2?"High counterplay":"Counterplay risk",detail:`Opens a new ${best.direction} lane through ${premiumText} (about ${best.estimate} points with average tiles).`,...best};
+}
