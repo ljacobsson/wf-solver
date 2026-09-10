@@ -1,4 +1,4 @@
-const SIZE=15;
+const SIZE=15, CENTER=(SIZE-1)/2;
 const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
 const lum=(d,i)=>(d[i]*.299+d[i+1]*.587+d[i+2]*.114);
 
@@ -222,7 +222,11 @@ export function readScreenshot(source, rect=locateBoard(source)) {
   for(let r=0;r<SIZE;r++) for(let c=0;c<SIZE;c++) {
     const x=rect.x+c*cell,y=rect.y+r*cell;
     const rgb=averagePatch(data,Math.round(x+cell/2),Math.round(y+cell/2),Math.max(2,Math.round(cell*.25)));
-    const kind=classify(rgb); let letter="",ocrConfidence=1,blank=false;
+    // The centre square carries a start marker, not a bonus. Its glyph skews the
+    // patch colour towards a letter premium, so never trust that reading there.
+    let kind=classify(rgb);
+    if(r===CENTER&&c===CENTER&&kind!=="TILE") kind="NONE";
+    let letter="",ocrConfidence=1,blank=false;
     // Yellow tiles mark the previous play; they are not blank tiles. Existing
     // blanks are intentionally left for user verification because their tiny
     // zero-value marker is less reliable than the main glyph.

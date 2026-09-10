@@ -4,7 +4,7 @@ import { randomLoadingQuote } from "./src/loading-quotes.js";
 
 const $=s=>document.querySelector(s);
 let board=makeBoard(), trie=null, selected=null, sourceImage=null, boardRect=null;
-let installPrompt=null;
+let installPrompt=null, lastQuote="";
 
 async function loadDictionary() {
   const status=$("#dictStatus");
@@ -81,9 +81,18 @@ async function runSolver() {
   finally{$("#solve").disabled=false;$("#solve").textContent="Find best moves";}
 }
 
+function showLoadingQuote(quote){
+  lastQuote=quote;
+  const first=quote.match(/[A-Za-z]+/),word=(first?.[0]||"SCORE").toUpperCase();
+  const tiles=$("#loadingTiles");tiles.style.setProperty("--n",word.length);
+  tiles.innerHTML=[...word].map((letter,i)=>`<span style="--i:${i}">${letter}<small>${VALUES[letter]??1}</small></span>`).join("");
+  $("#loadingQuote").textContent=first?quote.slice(first.index+first[0].length).trimStart():quote;
+}
+
 function setLoading(active){
   const root=document.documentElement,wasLoading=root.classList.contains("is-loading");
-  if(active&&!wasLoading)$("#loadingQuote").textContent=randomLoadingQuote();
+  if(active&&!wasLoading)showLoadingQuote(randomLoadingQuote());
+  if(!active&&wasLoading&&lastQuote)$("#headline").textContent=lastQuote;
   root.classList.toggle("is-loading",active);if(!active)root.classList.remove("receiving-share");
 }
 

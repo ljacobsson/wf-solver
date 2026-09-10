@@ -1,4 +1,4 @@
-const APP_CACHE = "wordfeud-app-v11";
+const APP_CACHE = "wordfeud-app-v12";
 const RUNTIME_CACHE = "wordfeud-runtime-v1";
 const MEDIA_CACHE = "wordfeud-shared-v1";
 const ROOT = new URL("./", self.registration.scope);
