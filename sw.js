@@ -1,4 +1,4 @@
-const APP_CACHE = "wordfeud-app-v12";
+const APP_CACHE = "wordfeud-app-v14";
 const RUNTIME_CACHE = "wordfeud-runtime-v1";
 const MEDIA_CACHE = "wordfeud-shared-v1";
 const ROOT = new URL("./", self.registration.scope);
@@ -61,10 +61,10 @@ self.addEventListener("activate", event => {
 
 self.addEventListener("fetch", event => {
   const url = new URL(event.request.url);
-  const sharePath = new URL("share-target", ROOT).pathname;
+  const sharePath = ROOT.pathname;
   const isRemoteDictionary = url.href === "https://raw.githubusercontent.com/kamilmielnik/scrabble-dictionaries/master/english/sowpods.txt";
 
-  if (event.request.method === "POST" && url.pathname === sharePath) {
+  if (event.request.method === "POST" && (url.pathname === sharePath || url.pathname === `${sharePath.replace(/\/$/, "")}/share-target`)) {
     event.respondWith(receiveScreenshot(event.request));
     return;
   }
@@ -113,13 +113,37 @@ async function receiveScreenshot(request) {
   try {
     const form = await request.formData();
     const file = form.get("screenshot");
-    if (!(file instanceof Blob) || !file.type.startsWith("image/") || file.size > 30 * 1024 * 1024) {
+    if (!(file instanceof Blob) || file.size === 0 || file.size > 30 * 1024 * 1024) {
       throw new Error("Invalid shared screenshot");
     }
+    // Some Android share providers send an empty or application/octet-stream
+    // MIME type even though the selected item is an image. Detect the formats
+    // the app supports from their signatures instead of trusting that metadata.
+    const contentType = await supportedImageType(file);
+    if (!contentType) throw new Error("Unsupported shared screenshot format");
     const cache = await caches.open(MEDIA_CACHE);
-    await cache.put(SHARE_URL, new Response(file, { headers: { "content-type": file.type || "image/png" } }));
+    await cache.put(SHARE_URL, new Response(file, { headers: { "content-type": contentType } }));
     return Response.redirect(new URL("?share-target=1", ROOT).href, 303);
-  } catch {
+  } catch (error) {
+    console.warn("Could not receive shared screenshot", error);
     return Response.redirect(new URL("?share-error=1", ROOT).href, 303);
   }
+}
+
+async function supportedImageType(file) {
+  const bytes = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+  if (bytes.length >= 8 &&
+      bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47 &&
+      bytes[4] === 0x0d && bytes[5] === 0x0a && bytes[6] === 0x1a && bytes[7] === 0x0a) {
+    return "image/png";
+  }
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+    return "image/jpeg";
+  }
+  if (bytes.length >= 12 &&
+      String.fromCharCode(...bytes.slice(0, 4)) === "RIFF" &&
+      String.fromCharCode(...bytes.slice(8, 12)) === "WEBP") {
+    return "image/webp";
+  }
+  return "";
 }

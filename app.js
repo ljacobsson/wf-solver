@@ -2,6 +2,8 @@ import { assessOpponentRisk, buildTrie, makeBoard, scoreBreakdown, solve, VALUES
 import { locateBoard, readScreenshot } from "./src/vision.js";
 import { randomLoadingQuote } from "./src/loading-quotes.js";
 
+window.__APP_STARTED__=true;
+
 const $=s=>document.querySelector(s);
 let board=makeBoard(), trie=null, selected=null, sourceImage=null, boardRect=null;
 let installPrompt=null, lastQuote="";

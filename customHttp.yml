@@ -1,0 +1,29 @@
+customHeaders:
+  - pattern: '/'
+    headers:
+      - key: 'Cache-Control'
+        value: 'no-cache, no-store, must-revalidate, s-maxage=0'
+  - pattern: '/index.html'
+    headers:
+      - key: 'Cache-Control'
+        value: 'no-cache, no-store, must-revalidate, s-maxage=0'
+  - pattern: '/sw.js'
+    headers:
+      - key: 'Cache-Control'
+        value: 'no-cache, no-store, must-revalidate, s-maxage=0'
+  - pattern: '/manifest.webmanifest'
+    headers:
+      - key: 'Cache-Control'
+        value: 'no-cache, no-store, must-revalidate, s-maxage=0'
+  - pattern: '/*.css'
+    headers:
+      - key: 'Cache-Control'
+        value: 'no-cache, must-revalidate, s-maxage=0'
+  - pattern: '/*.js'
+    headers:
+      - key: 'Cache-Control'
+        value: 'no-cache, must-revalidate, s-maxage=0'
+  - pattern: '/src/*.js'
+    headers:
+      - key: 'Cache-Control'
+        value: 'no-cache, must-revalidate, s-maxage=0'
