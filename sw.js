@@ -1,4 +1,4 @@
-const APP_CACHE = "wordfeud-app-v14";
+const APP_CACHE = "wordfeud-app-v15";
 const RUNTIME_CACHE = "wordfeud-runtime-v1";
 const MEDIA_CACHE = "wordfeud-shared-v1";
 const ROOT = new URL("./", self.registration.scope);
@@ -111,23 +111,45 @@ async function serveRuntimeAsset(request) {
 
 async function receiveScreenshot(request) {
   try {
-    const form = await request.formData();
-    const file = form.get("screenshot");
-    if (!(file instanceof Blob) || file.size === 0 || file.size > 30 * 1024 * 1024) {
-      throw new Error("Invalid shared screenshot");
+    const rawRequest = request.clone();
+    let file;
+    try {
+      const form = await request.formData();
+      file = form.get("screenshot");
+      // Android normally uses the manifest's field name, but some share
+      // providers now substitute their own. Use the first file part if so.
+      if (!isBlobLike(file)) file = [...form.values()].find(isBlobLike);
+    } catch {
+      // A few providers send the image as the POST body instead of multipart
+      // form data. Retain support for that non-standard but harmless variant.
+      file = await rawRequest.blob();
     }
+    const requestType = rawRequest.headers.get("content-type") || "";
+    if (!isBlobLike(file) && !requestType.includes("multipart/form-data")) {
+      file = await rawRequest.blob();
+    }
+    if (!isBlobLike(file)) throw new Error("missing-file");
+    if (file.size === 0) throw new Error("empty-file");
+    if (file.size > 30 * 1024 * 1024) throw new Error("file-too-large");
     // Some Android share providers send an empty or application/octet-stream
     // MIME type even though the selected item is an image. Detect the formats
     // the app supports from their signatures instead of trusting that metadata.
     const contentType = await supportedImageType(file);
-    if (!contentType) throw new Error("Unsupported shared screenshot format");
+    if (!contentType) throw new Error(`unsupported-format:${file.type || "unknown"}`);
     const cache = await caches.open(MEDIA_CACHE);
     await cache.put(SHARE_URL, new Response(file, { headers: { "content-type": contentType } }));
     return Response.redirect(new URL("?share-target=1", ROOT).href, 303);
   } catch (error) {
     console.warn("Could not receive shared screenshot", error);
-    return Response.redirect(new URL("?share-error=1", ROOT).href, 303);
+    const redirect = new URL("?share-error=1", ROOT);
+    redirect.searchParams.set("reason", error?.message || "unknown");
+    return Response.redirect(redirect.href, 303);
   }
+}
+
+function isBlobLike(value) {
+  return value != null && typeof value.size === "number" &&
+    typeof value.slice === "function" && typeof value.arrayBuffer === "function";
 }
 
 async function supportedImageType(file) {
@@ -145,5 +167,7 @@ async function supportedImageType(file) {
       String.fromCharCode(...bytes.slice(8, 12)) === "WEBP") {
     return "image/webp";
   }
+  const declaredType = (file.type || "").toLowerCase().split(";", 1)[0];
+  if (declaredType.startsWith("image/")) return declaredType;
   return "";
 }

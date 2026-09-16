@@ -109,7 +109,18 @@ $("#rack").addEventListener("input",e=>e.target.value=e.target.value.toUpperCase
 async function consumeSharedScreenshot(){
   const query=new URLSearchParams(location.search);
   if(!query.has("share-target")&&!query.has("share-error"))return;
-  if(query.has("share-error")){setLoading(false);alert("The shared item was not a supported screenshot.");history.replaceState({},"",location.pathname);return;}
+  if(query.has("share-error")){
+    const reason=query.get("reason")||"unknown",messages={
+      "missing-file":"Android opened the app but did not include the shared image.",
+      "empty-file":"Android shared an empty image file.",
+      "file-too-large":"The shared screenshot was larger than the 30 MB limit.",
+      "unknown":"The shared screenshot could not be received."
+    };
+    const message=reason.startsWith("unsupported-format:")
+      ?`Android shared the screenshot in an unsupported format (${reason.slice(19)}).`
+      :(messages[reason]||`The shared screenshot could not be received (${reason}).`);
+    setLoading(false);alert(message);history.replaceState({},"",location.pathname);return;
+  }
   try{
     const cache=await caches.open("wordfeud-shared-v1");
     const key=new URL("./__shared_screenshot__",location.href).href;
